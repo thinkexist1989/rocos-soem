@@ -41,6 +41,21 @@ boolean printMAP = FALSE;
 char usdo[128];
 char hstr[1024];
 
+
+struct VelocityOut
+{
+    int32 targetVelocity;
+    int16 controlWord;
+};
+
+struct VelocityIn
+{
+    int32 positionActualValue;
+    int32 velocityDemondValue;
+    int16 torqueDemond;
+    int16 statusWord;
+};
+
 /********************************************************************************/
 /** \brief  signal handler.
 *
@@ -309,6 +324,25 @@ char* SDO2string(uint16 slave, uint16 index, uint8 subidx, uint16 dtype)
 /** Read PDO assign structure */
 int si_PDOassign(uint16 slave, uint16 PDOassign, int mapoffset, int bitoffset)
 {
+    auto* pSlave = &pEcm->ecatBus->slaves[slave - 1]; //TODO: slaveId is 1-based
+    int* pNum = nullptr;
+    rocos::PdVar* pdVar = nullptr;
+    std::string str;
+
+    if(PDOassign == 0x1c12) { // Outputs
+        pNum = &pSlave->output_var_num;
+        pdVar = pSlave->output_vars;
+        str = "OUT";
+    } else if(PDOassign == 0x1c13) { // Inputs
+        pNum = &pSlave->input_var_num;
+        pdVar = pSlave->input_vars;
+        str="IN.";
+    } else {
+        return 0;
+    }
+
+    *pNum = 0;
+
     uint16 idxloop, nidx, subidxloop, rdat, idx, subidx;
     uint8 subcnt;
     int wkc, bsize = 0, rdl;
@@ -319,8 +353,9 @@ int si_PDOassign(uint16 slave, uint16 PDOassign, int mapoffset, int bitoffset)
 
     rdl = sizeof(rdat); rdat = 0;
     /* read PDO assign subindex 0 ( = number of PDO's) */
-    wkc = ec_SDOread(slave, PDOassign, 0x00, FALSE, &rdl, &rdat, EC_TIMEOUTRXM);
+    wkc = ec_SDOread(slave, PDOassign, 0x00, FALSE, &rdl, &rdat, EC_TIMEOUTRXM); // rdat -> 1
     rdat = etohs(rdat);
+
     /* positive result from slave ? */
     if ((wkc > 0) && (rdat > 0))
     {
@@ -332,15 +367,16 @@ int si_PDOassign(uint16 slave, uint16 PDOassign, int mapoffset, int bitoffset)
         {
             rdl = sizeof(rdat); rdat = 0;
             /* read PDO assign */
-            wkc = ec_SDOread(slave, PDOassign, (uint8)idxloop, FALSE, &rdl, &rdat, EC_TIMEOUTRXM);
+            wkc = ec_SDOread(slave, PDOassign, (uint8)idxloop, FALSE, &rdl, &rdat, EC_TIMEOUTRXM); // rdat -> 0x1600
             /* result is index of PDO */
             idx = etohs(rdat);
             if (idx > 0)
             {
                 rdl = sizeof(subcnt); subcnt = 0;
                 /* read number of subindexes of PDO */
-                wkc = ec_SDOread(slave,idx, 0x00, FALSE, &rdl, &subcnt, EC_TIMEOUTRXM);
+                wkc = ec_SDOread(slave,idx, 0x00, FALSE, &rdl, &subcnt, EC_TIMEOUTRXM); // subcnt -> 3 (entries)
                 subidx = subcnt;
+
                 /* for each subindex */
                 for (subidxloop = 1; subidxloop <= subidx; subidxloop++)
                 {
@@ -362,10 +398,20 @@ int si_PDOassign(uint16 slave, uint16 PDOassign, int mapoffset, int bitoffset)
                     /* read object entry from dictionary if not a filler (0x0000:0x00) */
                     if(obj_idx || obj_subidx)
                         wkc = ec_readOEsingle(0, obj_subidx, &ODlist, &OElist);
-                    printf("  [0x%4.4X.%1d] 0x%4.4X:0x%2.2X 0x%2.2X", abs_offset, abs_bit, obj_idx, obj_subidx, bitlen);
+//                    printf("  [0x%4.4X.%1d] 0x%4.4X:0x%2.2X 0x%2.2X", abs_offset, abs_bit, obj_idx, obj_subidx, bitlen);
                     if((wkc > 0) && OElist.Entries)
                     {
-                        printf(" %-12s %s\n", dtype2string(OElist.DataType[obj_subidx]), OElist.Name[obj_subidx]);
+//                        printf(" %-12s %s\n", dtype2string(OElist.DataType[obj_subidx]), OElist.Name[obj_subidx]);
+
+                        memset(pdVar[*pNum].name, '\0', sizeof(pdVar[*pNum].name)); /// Slave Name
+                        memcpy(pdVar[*pNum].name, OElist.Name[obj_subidx], strlen(OElist.Name[obj_subidx])); /// Input Var Name
+
+                        pdVar[*pNum].offset = bitoffset / 8;
+                        pdVar[*pNum].size = bitlen / 8;
+
+
+                        *pNum += 1;
+
                     }
                     else
                         printf("\n");
@@ -374,19 +420,34 @@ int si_PDOassign(uint16 slave, uint16 PDOassign, int mapoffset, int bitoffset)
             };
         };
     };
+
+    printf("No. of PD %s.......: %d\n", str.c_str() ,*pNum);
+    for(int i = 0; i < *pNum; i++) {
+        printf("[%02d] ...............: %s, %d offs, %d size\n", i+1, pdVar[i].name, pdVar[i].offset, pdVar[i].size);
+    }
+
     /* return total found bitlength (PDO) */
     return bsize;
 }
 
 int si_map_sdo(int slave)
 {
+    rocos::Slave* pSlave = &pEcm->ecatBus->slaves[slave - 1]; //TODO: slaveId is 1-based
+
+    memcpy(pSlave->name, ec_slave[slave].name, sizeof(ec_slave[slave].name)); /// Slave Name
+    printf("Slave Name..........: %s\n", pSlave->name);
+
+    pSlave->id = slave- 1; /// Slave ID
+    printf("Slave ID............: %d\n", pSlave->id);
+
+
     int wkc, rdl;
     int retVal = 0;
     uint8 nSM, iSM, tSM;
     int Tsize, outputs_bo, inputs_bo;
     uint8 SMt_bug_add;
 
-    printf("PDO mapping according to CoE :\n");
+//    printf("PDO mapping according to CoE :\n");
     SMt_bug_add = 0;
     outputs_bo = 0;
     inputs_bo = 0;
@@ -420,14 +481,14 @@ int si_map_sdo(int slave)
                 if (tSM == 3) // outputs
                 {
                     /* read the assign RXPDO */
-                    printf("  SM%1d outputs\n     addr b   index: sub bitl data_type    name\n", iSM);
+//                    printf("  SM%1d outputs\n     addr b   index: sub bitl data_type    name\n", iSM);
                     Tsize = si_PDOassign(slave, ECT_SDO_PDOASSIGN + iSM, (int)(ec_slave[slave].outputs - (uint8 *)&IOmap[0]), outputs_bo );
                     outputs_bo += Tsize;
                 }
                 if (tSM == 4) // inputs
                 {
                     /* read the assign TXPDO */
-                    printf("  SM%1d inputs\n     addr b   index: sub bitl data_type    name\n", iSM);
+//                    printf("  SM%1d inputs\n     addr b   index: sub bitl data_type    name\n", iSM);
                     Tsize = si_PDOassign(slave, ECT_SDO_PDOASSIGN + iSM, (int)(ec_slave[slave].inputs - (uint8 *)&IOmap[0]), inputs_bo );
                     inputs_bo += Tsize;
                 }
@@ -626,8 +687,6 @@ void slaveinfo(const char *ifname)
             while(EcatError) printf("%s", ec_elist2string());
             printf("%d slaves found and configured.\n",ec_slavecount);
 
-
-
             expectedWKC = (ec_group[0].outputsWKC * 2) + ec_group[0].inputsWKC;
             printf("Calculated workcounter %d\n", expectedWKC);
             /* wait for all slaves to reach SAFE_OP state */
@@ -650,11 +709,13 @@ void slaveinfo(const char *ifname)
             std::cout << "PD Input Size: byte -> " << ec_slave[0].Ibytes << "; bit -> " << ec_slave[0].Ibits << std::endl;
             std::cout << "PD Output Size: byte -> " << ec_slave[0].Obytes << "; bit -> " << ec_slave[0].Obits << std::endl;
 
+            pEcm = new EcatConfigMaster(FLAGS_id);
+            pEcm->createSharedMemory();
             /* 创建PD Memory */
             pEcm->createPdDataMemoryProvider(ec_slave[0].Ibytes, ec_slave[0].Obytes);
 
-            uint16 map_1c12[2] = {0x0001, 0x1600};
-            uint16 map_1c13[2] = {0x0001, 0x1a00};
+            uint16 map_1c12[2] = {0x0001, 0x1601};
+            uint16 map_1c13[2] = {0x0001, 0x1a01};
 
             ec_SDOwrite(1, 0x1c12, 0x00, TRUE, sizeof(map_1c12), &map_1c12, EC_TIMEOUTSAFE);
             ec_SDOwrite(1, 0x1c13, 0x00, TRUE, sizeof(map_1c13), &map_1c13, EC_TIMEOUTSAFE);
@@ -722,9 +783,9 @@ void slaveinfo(const char *ifname)
         {
             printf("No slaves found!\n");
         }
-        printf("End slaveinfo, close socket\n");
+//        printf("End slaveinfo, close socket\n");
         /* stop SOEM, close socket */
-        ec_close();
+//        ec_close();
     }
     else
     {
@@ -778,6 +839,157 @@ int main(int argc, char *argv[])
 //            adapter = adapter->next;
 //        }
 //    }
+
+
+    int8_t mode = 9;
+    ec_SDOwrite(1, 0x6060, 0, TRUE, sizeof(mode), &mode , EC_TIMEOUTSAFE);
+
+    uint16_t ctrl = 128;
+    ec_SDOwrite(1, 0x6040, 0, TRUE, sizeof(ctrl), &ctrl , EC_TIMEOUTSAFE);
+    usleep(100000);
+
+    ctrl = 0;
+    ec_SDOwrite(1, 0x6040, 0, TRUE, sizeof(ctrl), &ctrl , EC_TIMEOUTSAFE);
+    usleep(100000);
+
+    ctrl = 6;
+    ec_SDOwrite(1, 0x6040, 0, TRUE, sizeof(ctrl), &ctrl , EC_TIMEOUTSAFE);
+    usleep(100000);
+
+    ctrl = 7;
+    ec_SDOwrite(1, 0x6040, 0, TRUE, sizeof(ctrl), &ctrl , EC_TIMEOUTSAFE);
+    usleep(100000);
+
+    ctrl = 15;
+    ec_SDOwrite(1, 0x6040, 0, TRUE, sizeof(ctrl), &ctrl , EC_TIMEOUTSAFE);
+    usleep(100000);
+
+//    int8_t period = 1;
+//    ec_SDOwrite(1, 0x60c2, 1, TRUE, sizeof(period), &period, EC_TIMEOUTSAFE);
+
+    /** going operational */
+    ec_slave[0].state = EC_STATE_OPERATIONAL;
+    int wkc = ec_send_processdata();
+    std::cout << "ec_send_processdata returned wkc is: " << wkc << std::endl;
+    wkc = ec_receive_processdata(EC_TIMEOUTRET);
+    std::cout << "ec_receive_processdata returned wkc is: " << wkc << std::endl; //此处wkc为1，是因为处于Safe-Op，从站只能Tx
+
+    /* request OP state for all slaves */
+    ec_writestate(0); //将ec_slave[i].state状态写入各个slave
+    int chk = 40;
+    /* wait for all slaves to reach OP state */
+    do
+    {
+        ec_send_processdata();
+        ec_receive_processdata(EC_TIMEOUTRET);
+        ec_statecheck(0, EC_STATE_OPERATIONAL, EC_TIMEOUTSTATE);
+    } while (chk-- && (ec_slave[0].state != EC_STATE_OPERATIONAL));
+
+    if (ec_slave[0].state == EC_STATE_OPERATIONAL)
+    {
+        std::cout << "Operational state reached for all slaves." << std::endl;
+    }
+    else
+    {
+        std::cout << "Not all slaves reached operational state." << std::endl;
+        return -1;
+    }
+
+
+    std::cout << "ec_state is: " << ec_statecheck(0, EC_STATE_OPERATIONAL, EC_TIMEOUTSTATE) << std::endl;
+
+
+    /* 可以开始工作了 */
+    VelocityOut *target = (struct VelocityOut *)(ec_slave[1].outputs);
+    VelocityIn *val = (struct VelocityIn *)(ec_slave[1].inputs);
+
+    while (1)
+    {
+        /** PDO I/O refresh */
+        ec_send_processdata();
+        wkc = ec_receive_processdata(EC_TIMEOUTRET);
+
+        switch (target->controlWord)
+        {
+            case 0:
+                target->controlWord = 6;
+                break;
+            case 6:
+                target->controlWord = 7;
+                break;
+            case 7:
+                target->controlWord = 15;
+                break;
+            case 128:
+                target->controlWord = 0;
+                break;
+            default:
+                break;
+        }
+
+        std::cout << "control word is " << target->controlWord << std::endl;
+
+
+        // if ((val->statusWord & 0x0fff) == 0x0237)
+        {
+            // target->controlWord |= 0x10;
+            // target->targetPosition = val->positionActualValue + 100;
+            target->targetVelocity = 50000;
+            // posss += 200;
+        }
+
+        // printf("Position target is: %d, Position actual is: %d, Control word is: 0x%x, Status word is: 0x%x               ", target->targetPosition, val->positionActualValue, target->controlWord, val->statusWord);
+        // printf("\r");
+
+        usleep(1000);
+    }
+
+//    while (1)
+//    {
+//        /** PDO I/O refresh */
+//        ec_send_processdata();
+//        ec_receive_processdata(EC_TIMEOUTRET);
+//
+//        auto* pVel = (int32_t *) ((char *) pEcm->pdOutputPtr + pEcm->ecatBus->slaves[0].output_vars[0].offset);
+//        auto* pCtrl = (uint16_t *) ((char *) pEcm->pdOutputPtr + pEcm->ecatBus->slaves[0].output_vars[1].offset);
+//
+//        *pVel = 50000;
+//
+//        switch(*pCtrl) {
+//            case 0:
+//                *pCtrl = 6;
+//                usleep(100000);
+//                break;
+//            case 6:
+//                *pCtrl = 7;
+//                usleep(100000);
+//                break;
+//            case 7:
+//                *pCtrl = 15;
+//                usleep(100000);
+//                break;
+//            case 15:
+//                break;
+//            default:
+//                *pCtrl = 0;
+//                break;
+//        }
+//
+//
+////        std::cout << pEcm->ecatBus->slaves[0].name << "\t" << pEcm->ecatBus->slaves[0].output_vars[0].name << "\t" << pEcm->ecatBus->slaves[0].output_vars[0].offset << "\t" << pEcm->ecatBus->slaves[0].output_vars[0].size << std::endl;
+//
+//
+//
+//
+//        memcpy(pEcm->pdInputPtr, ec_slave[0].inputs, ec_slave[0].Ibytes);   // Slave -> Master
+//        memcpy( ec_slave[0].outputs, pEcm->pdOutputPtr,ec_slave[0].Obytes); // Master -> Slave
+//
+//        pEcm->updateSempahore();
+//
+//        osal_usleep(1000);
+//    }
+
+
 
     printf("End program\n");
     return (0);
