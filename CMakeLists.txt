@@ -49,6 +49,7 @@ add_subdirectory(3rdparty/termcolor)
 include_directories(
         include
         include/${PROJECT_NAME}
+        src
 )
 
 
@@ -70,4 +71,19 @@ target_link_libraries(ecat_config
 )
 
 
-add_executable(rocos_soem src/main.cpp src/ecat_config_master.cpp)
+add_executable(rocos_soem
+        src/main.cpp
+        src/ecat_config_master.cpp
+        src/ecat_flags.cpp
+)
+target_link_libraries(rocos_soem
+        PUBLIC
+        soem
+        ecat_config
+        gflags::gflags
+        pthread
+        termcolor::termcolor
+)
+
+
+configure_file(include/ver.h.in ver.h) # Version Definition

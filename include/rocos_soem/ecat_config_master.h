@@ -83,6 +83,8 @@ public:
 
     void wait();
 
+    void updateSempahore();
+
 
 
     ///////////// Format robot info /////////////////

@@ -185,3 +185,14 @@ bool EcatConfigMaster::getPdDataMemoryProvider() {
     return true;
 }
 
+void EcatConfigMaster::updateSempahore() {
+    ////============== semphore update by think =================////
+    // 通知其他进程可以更新这个周期的数据了 by think
+    for (auto &sem: this->sem_mutex) {
+        int val = 0;
+        sem_getvalue(sem, &val);
+        if (val < 1)
+            sem_post(sem);
+    }
+}
+

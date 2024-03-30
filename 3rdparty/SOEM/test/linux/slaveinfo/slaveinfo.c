@@ -218,7 +218,7 @@ int si_PDOassign(uint16 slave, uint16 PDOassign, int mapoffset, int bitoffset)
 
     rdl = sizeof(rdat); rdat = 0;
     /* read PDO assign subindex 0 ( = number of PDO's) */
-    wkc = ec_SDOread(slave, PDOassign, 0x00, FALSE, &rdl, &rdat, EC_TIMEOUTRXM);
+    wkc = ec_SDOread(slave, PDOassign, 0x00, FALSE, &rdl, &rdat, EC_TIMEOUTRXM); // 0x1c12:0 -> rdat2 = RxMapping number
     rdat = etohs(rdat);
     /* positive result from slave ? */
     if ((wkc > 0) && (rdat > 0))
@@ -231,21 +231,21 @@ int si_PDOassign(uint16 slave, uint16 PDOassign, int mapoffset, int bitoffset)
         {
             rdl = sizeof(rdat); rdat = 0;
             /* read PDO assign */
-            wkc = ec_SDOread(slave, PDOassign, (uint8)idxloop, FALSE, &rdl, &rdat, EC_TIMEOUTRXM);
+            wkc = ec_SDOread(slave, PDOassign, (uint8)idxloop, FALSE, &rdl, &rdat, EC_TIMEOUTRXM); // 0x1c12:01-> rdat = 0x1600
             /* result is index of PDO */
             idx = etohs(rdat);
             if (idx > 0)
             {
                 rdl = sizeof(subcnt); subcnt = 0;
                 /* read number of subindexes of PDO */
-                wkc = ec_SDOread(slave,idx, 0x00, FALSE, &rdl, &subcnt, EC_TIMEOUTRXM);
+                wkc = ec_SDOread(slave,idx, 0x00, FALSE, &rdl, &subcnt, EC_TIMEOUTRXM); // 0x1600:0-> subcnt = Outputs number
                 subidx = subcnt;
                 /* for each subindex */
                 for (subidxloop = 1; subidxloop <= subidx; subidxloop++)
                 {
                     rdl = sizeof(rdat2); rdat2 = 0;
                     /* read SDO that is mapped in PDO */
-                    wkc = ec_SDOread(slave, idx, (uint8)subidxloop, FALSE, &rdl, &rdat2, EC_TIMEOUTRXM);
+                    wkc = ec_SDOread(slave, idx, (uint8)subidxloop, FALSE, &rdl, &rdat2, EC_TIMEOUTRXM); // 0x1600:01-> rdat2 = 0x607A(Target position)
                     rdat2 = etohl(rdat2);
                     /* extract bitlength of SDO */
                     bitlen = LO_BYTE(rdat2);

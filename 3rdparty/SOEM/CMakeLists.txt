@@ -70,6 +70,13 @@ add_library(soem STATIC
   ${OSAL_SOURCES}
   ${OSHW_SOURCES}
   ${OSHW_EXTRA_SOURCES})
+target_include_directories(soem
+  PUBLIC
+        soem
+        osal
+        osal/${OS}
+        oshw/${OS}
+)
 target_link_libraries(soem ${OS_LIBS})
 
 message("LIB_DIR: ${SOEM_LIB_INSTALL_DIR}")
