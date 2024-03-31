@@ -26,6 +26,8 @@ project(rocos_soem VERSION 0.0.1 DESCRIPTION "ROCOS Simple Open EtherCAT Master"
 
 set(CMAKE_CXX_STANDARD 11)
 
+add_compile_options(-Wno-error=stringop-truncation)
+
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -75,6 +77,7 @@ add_executable(rocos_soem
         src/main.cpp
         src/ecat_config_master.cpp
         src/ecat_flags.cpp
+        src/ecat_process.cpp
 )
 target_link_libraries(rocos_soem
         PUBLIC
@@ -87,3 +90,12 @@ target_link_libraries(rocos_soem
 
 
 configure_file(include/ver.h.in ver.h) # Version Definition
+
+
+enable_testing()
+add_executable(unit_test test/unit_test.cpp)
+target_link_libraries(unit_test
+        PRIVATE
+        ecat_config
+)
+add_test(NAME unit_test COMMAND unit_test)
