@@ -33,6 +33,7 @@ Yang Luo, PHD
 
 
 #include <semaphore.h> //sem
+#include <cinttypes>
 
 #define MAX_SLAVE_NUM 50     // Maximal number of slaves in the EtherCAT network
 #define MAX_PDINPUT_NUM 25   // Maximal number of PD Inputs per slave
@@ -60,6 +61,8 @@ namespace rocos {
         char name[MAX_PD_NAME_LEN]      {'\0'};
         int  offset                     {-1};
         int  size                       {-1};
+        uint16_t index                {0};
+        uint8_t  sub_index             {0};
     };
 
     struct Slave {
