@@ -29,6 +29,9 @@
 #include <sys/utsname.h>
 #include <csignal>
 
+#include <mutex>
+
+std::mutex mtx;
 
 EcatConfigMaster *pEcm = nullptr;
 volatile bool bRun = true;
@@ -40,6 +43,19 @@ boolean printSDO = FALSE;
 boolean printMAP = FALSE;
 char usdo[128];
 char hstr[1024];
+
+OSAL_THREAD_HANDLE thread1;
+
+#define EC_TIMEOUTMON 500
+
+int expectedWKC;
+boolean needlf;
+volatile int wkc;
+boolean inOP;
+uint8 currentgroup = 0;
+boolean forceByteAlignment = FALSE;
+
+
 
 struct PACKED VelocityOut {
     int32 targetVelocity;
@@ -99,7 +115,7 @@ int EnableRealtimeEnvironment(void) {
     /* request realtime scheduling for the current process
     * This value is overwritten for each individual task
     */
-    schedParam.sched_priority = 39; /* 1 lowest priority, 99 highest priority */
+    schedParam.sched_priority = 99; /* 1 lowest priority, 99 highest priority */
     nRetval = sched_setscheduler(0, SCHED_FIFO, &schedParam);
     if (nRetval == -1) {
         std::cerr << "ERROR - cannot change scheduling policy!\n"
@@ -410,7 +426,8 @@ int si_PDOassign(uint16 slave, uint16 PDOassign, int mapoffset, int bitoffset) {
 
     printf("No. of PD %s.......: %d\n", str.c_str(), *pNum);
     for (int i = 0; i < *pNum; i++) {
-        printf("[%02d] 0x%4.4X:0x%2.2X....: %s, %d offs, %d size\n", i + 1, pdVar[i].index, pdVar[i].sub_index, pdVar[i].name, pdVar[i].offset, pdVar[i].size);
+        printf("[%02d] 0x%4.4X:0x%2.2X....: %s, %d offs, %d size\n", i + 1, pdVar[i].index, pdVar[i].sub_index,
+               pdVar[i].name, pdVar[i].offset, pdVar[i].size);
     }
 
     /* return total found bitlength (PDO) */
@@ -653,7 +670,7 @@ void slaveinfo(const char *ifname) {
 
         /* find and auto-config slaves */
         if (ec_config(FALSE, &IOmap) > 0) {
-            ec_configdc();
+//            ec_configdc();
             while (EcatError) printf("%s", ec_elist2string());
             printf("%d slaves found and configured.\n", ec_slavecount);
 
@@ -673,11 +690,26 @@ void slaveinfo(const char *ifname) {
                 }
             }
 
+//            uint16 sync_mode = 0;
+//            int size = sizeof(uint16);
+//            ec_SDOwrite(1, 0x1c32, 0x01, true, size, &sync_mode, EC_TIMEOUTRXM);
+//            ec_SDOread(1, 0x1c32, 0x01, true, &size, &sync_mode, EC_TIMEOUTRXM);
+//            std::cout << "sync mode: " << sync_mode << std::endl;
+
+//            uint32 cycle_time = 2000000;
+//            int size = sizeof(uint32);
+//            ec_SDOwrite(1, 0x1c32, 0x02, true, size, &cycle_time, EC_TIMEOUTRXM);
+//            cycle_time = 0;
+//            ec_SDOread(1, 0x1c32, 0x02, true, &size, &cycle_time, EC_TIMEOUTRXM);
+//
+//            std::cout << "cycle time: " << cycle_time << std::endl;
+
+
             uint16 map_1c12[2] = {0x0001, 0x1601};
             uint16 map_1c13[2] = {0x0001, 0x1a01};
 
-            ec_SDOwrite(2, 0x1c12, 0x00, TRUE, sizeof(map_1c12), &map_1c12, EC_TIMEOUTSAFE);
-            ec_SDOwrite(2, 0x1c13, 0x00, TRUE, sizeof(map_1c13), &map_1c13, EC_TIMEOUTSAFE);
+            ec_SDOwrite(1, 0x1c12, 0x00, TRUE, sizeof(map_1c12), &map_1c12, EC_TIMEOUTSAFE);
+            ec_SDOwrite(1, 0x1c13, 0x00, TRUE, sizeof(map_1c13), &map_1c13, EC_TIMEOUTSAFE);
 
             std::cout << "PD Input Size: byte -> " << ec_slave[0].Ibytes << "; bit -> " << ec_slave[0].Ibits
                       << std::endl;
@@ -764,13 +796,124 @@ char ifbuf[1024];
 
 void test() {
 
-    while (1) {
-        int i = 0;
-        std::cin >> i;
-        target->controlWord = i;
-    }
+    usleep(200000);
+    target->controlWord = 128;
+
+    usleep(200000);
+    target->controlWord = 0;
+
+
+    usleep(200000);
+    target->controlWord = 6;
+
+
+    usleep(200000);
+    target->controlWord = 7;
+
+
+    usleep(200000);
+    target->controlWord = 15;
+
+
+    usleep(200000);
 
 }
+
+
+OSAL_THREAD_FUNC ecatcheck( void *ptr )
+{
+    int slave;
+    (void)ptr;                  /* Not used */
+
+    while(1)
+    {
+        if( inOP && ((wkc < expectedWKC) || ec_group[currentgroup].docheckstate))
+        {
+            if (needlf)
+            {
+                needlf = FALSE;
+                printf("\n");
+            }
+            /* one ore more slaves are not responding */
+            ec_group[currentgroup].docheckstate = FALSE;
+            ec_readstate();
+            for (slave = 1; slave <= ec_slavecount; slave++)
+            {
+                if ((ec_slave[slave].group == currentgroup) && (ec_slave[slave].state != EC_STATE_OPERATIONAL))
+                {
+                    ec_group[currentgroup].docheckstate = TRUE;
+                    if (ec_slave[slave].state == (EC_STATE_SAFE_OP + EC_STATE_ERROR))
+                    {
+                        printf("ERROR : slave %d is in SAFE_OP + ERROR, attempting ack.\n", slave);
+                        ec_slave[slave].state = (EC_STATE_SAFE_OP + EC_STATE_ACK);
+                        ec_writestate(slave);
+                    }
+                    else if(ec_slave[slave].state == EC_STATE_SAFE_OP)
+                    {
+                        printf("WARNING : slave %d is in SAFE_OP, change to OPERATIONAL.\n", slave);
+                        ec_slave[slave].state = EC_STATE_OPERATIONAL;
+                        ec_writestate(slave);
+                    }
+                    else if(ec_slave[slave].state > EC_STATE_NONE)
+                    {
+                        if (ec_reconfig_slave(slave, EC_TIMEOUTMON))
+                        {
+                            ec_slave[slave].islost = FALSE;
+                            printf("MESSAGE : slave %d reconfigured\n",slave);
+                        }
+                    }
+                    else if(!ec_slave[slave].islost)
+                    {
+                        /* re-check state */
+                        ec_statecheck(slave, EC_STATE_OPERATIONAL, EC_TIMEOUTRET);
+                        if (ec_slave[slave].state == EC_STATE_NONE)
+                        {
+                            ec_slave[slave].islost = TRUE;
+                            printf("ERROR : slave %d lost\n",slave);
+                        }
+                    }
+                }
+                if (ec_slave[slave].islost)
+                {
+                    if(ec_slave[slave].state == EC_STATE_NONE)
+                    {
+                        if (ec_recover_slave(slave, EC_TIMEOUTMON))
+                        {
+                            ec_slave[slave].islost = FALSE;
+                            printf("MESSAGE : slave %d recovered\n",slave);
+                        }
+                    }
+                    else
+                    {
+                        ec_slave[slave].islost = FALSE;
+                        printf("MESSAGE : slave %d found\n",slave);
+                    }
+                }
+            }
+            if(!ec_group[currentgroup].docheckstate)
+                printf("OK : all slaves resumed OPERATIONAL.\n");
+        }
+        osal_usleep(10000);
+    }
+}
+
+int thread_create(void *thandle, int stacksize, void (*func)(void *), void *param)
+{
+    int                  ret;
+    pthread_attr_t       attr;
+    pthread_t            *threadp;
+
+    threadp = static_cast<pthread_t *>(thandle);
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, stacksize);
+    ret = pthread_create(threadp, &attr, reinterpret_cast<void *(*)(void *)>(func), param);
+    if(ret < 0)
+    {
+        return 0;
+    }
+    return 1;
+}
+
 
 int main(int argc, char *argv[]) {
     //! Linux realtime configuration
@@ -784,6 +927,22 @@ int main(int argc, char *argv[]) {
         signal(SIGINT, SignalHandler);
         signal(SIGTERM, SignalHandler);
     }
+
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset); // 清空CPU集合
+
+    // 设置进程可以运行在CPU核心0和1上
+    CPU_SET(0, &cpuset);
+
+    if (sched_setaffinity(0, sizeof(cpuset), &cpuset) == -1) {
+        perror("sched_setaffinity");
+        return 1;
+    }
+
+    printf("CPU亲和性设置成功\n");
+
+
+
     //! Set running flag
     bRun = true;
 
@@ -791,16 +950,19 @@ int main(int argc, char *argv[]) {
     gflags::SetVersionString(ROCOS_ECM_VERSION);
     gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-    ec_adaptert *adapter = NULL;
-    printf("Available adapters\n");
-    adapter = ec_find_adapters();
-    while (adapter != NULL) {
-        printf("Description : %s, Device to use for wpcap: %s\n", adapter->desc, adapter->name);
-        adapter = adapter->next;
-    }
+//    ec_adaptert *adapter = NULL;
+//    printf("Available adapters\n");
+//    adapter = ec_find_adapters();
+//    while (adapter != NULL) {
+//        printf("Description : %s, Device to use for wpcap: %s\n", adapter->desc, adapter->name);
+//        adapter = adapter->next;
+//    }
 
     printf("SOEM (Simple Open EtherCAT Master)\nSlaveinfo\n");
 
+
+    /* create thread to handle slave error handling in OP */
+    thread_create(&thread1, 128000, &ecatcheck, (void*) &ctime);
 
     slaveinfo(FLAGS_instance.c_str());
 
@@ -838,8 +1000,8 @@ int main(int argc, char *argv[]) {
 
 
     /* 可以开始工作了 */
-    target = (struct VelocityOut *) (ec_slave[2].outputs);
-    val = (struct VelocityIn *) (ec_slave[2].inputs);
+    target = (struct VelocityOut *) (ec_slave[1].outputs);
+    val = (struct VelocityIn *) (ec_slave[1].inputs);
 
     std::cout << "VelocityOut size: " << sizeof(struct VelocityOut) << std::endl;
     std::cout << "VelocityIn size: " << sizeof(struct VelocityIn) << std::endl;
@@ -853,19 +1015,68 @@ int main(int argc, char *argv[]) {
 
     int i = 0;
 
+    uint16_t expectedWKC = (ec_group[0].outputsWKC * 2) + ec_group[0].inputsWKC;
+    printf("Calculated workcounter %d\n", expectedWKC);
+
+    uint16_t error_code = 0;
+    int size = sizeof(error_code);
+
+    target->targetVelocity = 100000;
+
     while (1) {
         /** PDO I/O refresh */
+
+        auto time_start = std::chrono::high_resolution_clock::now();
         ec_send_processdata();
-        wkc = ec_receive_processdata(EC_TIMEOUTRET);
-        if(i >= 1000) {
-            std::cout << std::hex << "control word: " << target->controlWord << "; status word: "  << val->statusWord << "\r" << std::endl;
-            i = 0;
+        wkc = ec_receive_processdata(50);
+
+        while (wkc < expectedWKC) {
+            std::cout << "wkc is: " << wkc << std::endl;
+            ec_send_processdata();
+            wkc = ec_receive_processdata(50);
+//            return -1;
         }
+
+//        uint16_t idx = 0x603F;
+//        uint8_t subidx = 0;
+//        ec_SDOread(1, idx, subidx, false, &size, &error_code, EC_TIMEOUTSAFE);
+
+//        if(error_code != 0) {
+//            std::cout << "; error code: " << error_code << std::endl;
+//        }
+
+
+        if (i >= 1000) {
+
+//            std::cout << std::hex << "control word: " << target->controlWord << "; status word: " << val->statusWord
+//                       << std::endl;
+            i = 0;
+
+            if (val->statusWord & 0x27) {
+                target->targetVelocity *= -1;
+            }
+
+
+        }
+
+
+
+
+
 //        memcpy(pEcm->pdInputPtr, ec_slave[0].inputs, ec_slave[0].Ibytes);   // Slave -> Master
 //        memcpy( ec_slave[0].outputs, pEcm->pdOutputPtr,ec_slave[0].Obytes); // Master -> Slave
 
         i++;
-        usleep(1000);
+
+        auto time_end = std::chrono::high_resolution_clock::now();
+        int elasped_time = (time_end - time_start).count()/1000;
+
+        if(elasped_time < 1000) {
+            osal_usleep(1000 - elasped_time);
+        }
+        else {
+            std::cout << "elasped time: " << elasped_time << std::endl;
+        }
     }
 
 }

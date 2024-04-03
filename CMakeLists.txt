@@ -26,7 +26,7 @@ project(rocos_soem VERSION 0.0.1 DESCRIPTION "ROCOS Simple Open EtherCAT Master"
 
 set(CMAKE_CXX_STANDARD 11)
 
-add_compile_options(-Wno-error=stringop-truncation)
+add_compile_options(-Wno-error=stringop-truncation -Wno-error=stringop-overflow)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
