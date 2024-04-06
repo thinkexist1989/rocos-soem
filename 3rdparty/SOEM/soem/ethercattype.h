@@ -62,6 +62,7 @@ extern "C"
 #define EC_MAXBUF          16
 /** timeout value in us for tx frame to return to rx */
 #define EC_TIMEOUTRET      2000
+#define EC_TIMEOUTRET100      100 // 100us by think
 /** timeout value in us for safe data transfer, max. triple retry */
 #define EC_TIMEOUTRET3     (EC_TIMEOUTRET * 3)
 /** timeout value in us for return "safe" variant (f.e. wireless) */

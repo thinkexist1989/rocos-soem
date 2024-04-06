@@ -56,7 +56,6 @@ uint8 currentgroup = 0;
 boolean forceByteAlignment = FALSE;
 
 
-
 struct PACKED VelocityOut {
     int32 targetVelocity;
     uint16_t controlWord;
@@ -690,23 +689,9 @@ void slaveinfo(const char *ifname) {
                 }
             }
 
-//            uint16 sync_mode = 0;
-//            int size = sizeof(uint16);
-//            ec_SDOwrite(1, 0x1c32, 0x01, true, size, &sync_mode, EC_TIMEOUTRXM);
-//            ec_SDOread(1, 0x1c32, 0x01, true, &size, &sync_mode, EC_TIMEOUTRXM);
-//            std::cout << "sync mode: " << sync_mode << std::endl;
 
-//            uint32 cycle_time = 2000000;
-//            int size = sizeof(uint32);
-//            ec_SDOwrite(1, 0x1c32, 0x02, true, size, &cycle_time, EC_TIMEOUTRXM);
-//            cycle_time = 0;
-//            ec_SDOread(1, 0x1c32, 0x02, true, &size, &cycle_time, EC_TIMEOUTRXM);
-//
-//            std::cout << "cycle time: " << cycle_time << std::endl;
-
-
-            uint16 map_1c12[2] = {0x0001, 0x1601};
-            uint16 map_1c13[2] = {0x0001, 0x1a01};
+            uint16 map_1c12[2] = {0x0001, 0x1600};
+            uint16 map_1c13[2] = {0x0001, 0x1a00};
 
             ec_SDOwrite(1, 0x1c12, 0x00, TRUE, sizeof(map_1c12), &map_1c12, EC_TIMEOUTSAFE);
             ec_SDOwrite(1, 0x1c13, 0x00, TRUE, sizeof(map_1c13), &map_1c13, EC_TIMEOUTSAFE);
@@ -723,6 +708,7 @@ void slaveinfo(const char *ifname) {
 
 
             ec_readstate();
+            pEcm->ecatBus->slave_num = ec_slavecount;
             for (cnt = 1; cnt <= ec_slavecount; cnt++) {
 //                printf("\nSlave:%d\n Name:%s\n Output size: %dbits\n Input size: %dbits\n State: %d\n Delay: %d[ns]\n Has DC: %d\n",
 //                       cnt, ec_slave[cnt].name, ec_slave[cnt].Obits, ec_slave[cnt].Ibits,
@@ -820,95 +806,73 @@ void test() {
 }
 
 
-OSAL_THREAD_FUNC ecatcheck( void *ptr )
-{
+OSAL_THREAD_FUNC ecatcheck(void *ptr) {
     int slave;
-    (void)ptr;                  /* Not used */
+    (void) ptr;                  /* Not used */
 
-    while(1)
-    {
-        if( inOP && ((wkc < expectedWKC) || ec_group[currentgroup].docheckstate))
-        {
-            if (needlf)
-            {
+    while (1) {
+        if (inOP && ((wkc < expectedWKC) || ec_group[currentgroup].docheckstate)) {
+            if (needlf) {
                 needlf = FALSE;
                 printf("\n");
             }
             /* one ore more slaves are not responding */
             ec_group[currentgroup].docheckstate = FALSE;
             ec_readstate();
-            for (slave = 1; slave <= ec_slavecount; slave++)
-            {
-                if ((ec_slave[slave].group == currentgroup) && (ec_slave[slave].state != EC_STATE_OPERATIONAL))
-                {
+            for (slave = 1; slave <= ec_slavecount; slave++) {
+                if ((ec_slave[slave].group == currentgroup) && (ec_slave[slave].state != EC_STATE_OPERATIONAL)) {
                     ec_group[currentgroup].docheckstate = TRUE;
-                    if (ec_slave[slave].state == (EC_STATE_SAFE_OP + EC_STATE_ERROR))
-                    {
+                    if (ec_slave[slave].state == (EC_STATE_SAFE_OP + EC_STATE_ERROR)) {
                         printf("ERROR : slave %d is in SAFE_OP + ERROR, attempting ack.\n", slave);
                         ec_slave[slave].state = (EC_STATE_SAFE_OP + EC_STATE_ACK);
                         ec_writestate(slave);
-                    }
-                    else if(ec_slave[slave].state == EC_STATE_SAFE_OP)
-                    {
+                    } else if (ec_slave[slave].state == EC_STATE_SAFE_OP) {
                         printf("WARNING : slave %d is in SAFE_OP, change to OPERATIONAL.\n", slave);
                         ec_slave[slave].state = EC_STATE_OPERATIONAL;
                         ec_writestate(slave);
-                    }
-                    else if(ec_slave[slave].state > EC_STATE_NONE)
-                    {
-                        if (ec_reconfig_slave(slave, EC_TIMEOUTMON))
-                        {
+                    } else if (ec_slave[slave].state > EC_STATE_NONE) {
+                        if (ec_reconfig_slave(slave, EC_TIMEOUTMON)) {
                             ec_slave[slave].islost = FALSE;
-                            printf("MESSAGE : slave %d reconfigured\n",slave);
+                            printf("MESSAGE : slave %d reconfigured\n", slave);
                         }
-                    }
-                    else if(!ec_slave[slave].islost)
-                    {
+                    } else if (!ec_slave[slave].islost) {
                         /* re-check state */
                         ec_statecheck(slave, EC_STATE_OPERATIONAL, EC_TIMEOUTRET);
-                        if (ec_slave[slave].state == EC_STATE_NONE)
-                        {
+                        if (ec_slave[slave].state == EC_STATE_NONE) {
                             ec_slave[slave].islost = TRUE;
-                            printf("ERROR : slave %d lost\n",slave);
+                            printf("ERROR : slave %d lost\n", slave);
                         }
                     }
                 }
-                if (ec_slave[slave].islost)
-                {
-                    if(ec_slave[slave].state == EC_STATE_NONE)
-                    {
-                        if (ec_recover_slave(slave, EC_TIMEOUTMON))
-                        {
+                if (ec_slave[slave].islost) {
+                    if (ec_slave[slave].state == EC_STATE_NONE) {
+                        if (ec_recover_slave(slave, EC_TIMEOUTMON)) {
                             ec_slave[slave].islost = FALSE;
-                            printf("MESSAGE : slave %d recovered\n",slave);
+                            printf("MESSAGE : slave %d recovered\n", slave);
                         }
-                    }
-                    else
-                    {
+                    } else {
                         ec_slave[slave].islost = FALSE;
-                        printf("MESSAGE : slave %d found\n",slave);
+                        printf("MESSAGE : slave %d found\n", slave);
                     }
                 }
             }
-            if(!ec_group[currentgroup].docheckstate)
+            if (!ec_group[currentgroup].docheckstate)
                 printf("OK : all slaves resumed OPERATIONAL.\n");
         }
         osal_usleep(10000);
     }
 }
 
-int thread_create(void *thandle, int stacksize, void (*func)(void *), void *param)
-{
-    int                  ret;
-    pthread_attr_t       attr;
-    pthread_t            *threadp;
+int thread_create(void *thandle, int stacksize, void (*func)(void *), void *param) {
+    int ret;
+    pthread_attr_t attr;
+    pthread_t *threadp;
 
     threadp = static_cast<pthread_t *>(thandle);
     pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, stacksize);
     ret = pthread_create(threadp, &attr, reinterpret_cast<void *(*)(void *)>(func), param);
-    if(ret < 0)
-    {
+    if (ret < 0) {
         return 0;
     }
     return 1;
@@ -962,12 +926,12 @@ int main(int argc, char *argv[]) {
 
 
     /* create thread to handle slave error handling in OP */
-    thread_create(&thread1, 128000, &ecatcheck, (void*) &ctime);
+    thread_create(&thread1, 128000, &ecatcheck, (void *) &ctime);
 
     slaveinfo(FLAGS_instance.c_str());
 
 
-    int8_t mode = 9;
+    int8_t mode = 8;
     ec_SDOwrite(1, 0x6060, 0, TRUE, sizeof(mode), &mode, EC_TIMEOUTSAFE);
 
 
@@ -975,7 +939,7 @@ int main(int argc, char *argv[]) {
     ec_slave[0].state = EC_STATE_OPERATIONAL;
     int wkc = ec_send_processdata();
     std::cout << "ec_send_processdata returned wkc is: " << wkc << std::endl;
-    wkc = ec_receive_processdata(EC_TIMEOUTRET);
+    wkc = ec_receive_processdata(EC_TIMEOUTRET100);
     std::cout << "ec_receive_processdata returned wkc is: " << wkc << std::endl; //此处wkc为1，是因为处于Safe-Op，从站只能Tx
 
     /* request OP state for all slaves */
@@ -984,7 +948,7 @@ int main(int argc, char *argv[]) {
     /* wait for all slaves to reach OP state */
     do {
         ec_send_processdata();
-        ec_receive_processdata(EC_TIMEOUTRET);
+        ec_receive_processdata(EC_TIMEOUTRET100);
         ec_statecheck(0, EC_STATE_OPERATIONAL, EC_TIMEOUTSTATE);
     } while (chk-- && (ec_slave[0].state != EC_STATE_OPERATIONAL));
 
@@ -1006,77 +970,43 @@ int main(int argc, char *argv[]) {
     std::cout << "VelocityOut size: " << sizeof(struct VelocityOut) << std::endl;
     std::cout << "VelocityIn size: " << sizeof(struct VelocityIn) << std::endl;
 
-
-//    uint16_t ctrl = 128;
-//    ec_SDOwrite(1, 0x6040, 0, TRUE, sizeof(ctrl), &ctrl, EC_TIMEOUTSAFE);
-//    usleep(100000);
-
-    std::thread(test).detach();
-
-    int i = 0;
+//    std::thread(test).detach();
 
     uint16_t expectedWKC = (ec_group[0].outputsWKC * 2) + ec_group[0].inputsWKC;
     printf("Calculated workcounter %d\n", expectedWKC);
 
-    uint16_t error_code = 0;
-    int size = sizeof(error_code);
-
-    target->targetVelocity = 100000;
+//    target->targetVelocity = 100000;
 
     while (1) {
         /** PDO I/O refresh */
 
         auto time_start = std::chrono::high_resolution_clock::now();
         ec_send_processdata();
-        wkc = ec_receive_processdata(50);
+        wkc = ec_receive_processdata(EC_TIMEOUTRET100);
 
-        while (wkc < expectedWKC) {
+
+        if (wkc < expectedWKC) {
             std::cout << "wkc is: " << wkc << std::endl;
-            ec_send_processdata();
-            wkc = ec_receive_processdata(50);
-//            return -1;
-        }
 
-//        uint16_t idx = 0x603F;
-//        uint8_t subidx = 0;
-//        ec_SDOread(1, idx, subidx, false, &size, &error_code, EC_TIMEOUTSAFE);
+        } else {
 
-//        if(error_code != 0) {
-//            std::cout << "; error code: " << error_code << std::endl;
-//        }
+            memcpy(pEcm->pdInputPtr, ec_slave[0].inputs, ec_slave[0].Ibytes);   // Slave -> Master
+            memcpy(ec_slave[0].outputs, pEcm->pdOutputPtr, ec_slave[0].Obytes); // Master -> Slave
+
+            pEcm->updateSempahore();
+
+            auto time_end = std::chrono::high_resolution_clock::now();
+            int elasped_time = (time_end - time_start).count() / 1000;
 
 
-        if (i >= 1000) {
 
-//            std::cout << std::hex << "control word: " << target->controlWord << "; status word: " << val->statusWord
-//                       << std::endl;
-            i = 0;
-
-            if (val->statusWord & 0x27) {
-                target->targetVelocity *= -1;
+            if (elasped_time < 1000) {
+                osal_usleep(1000 - elasped_time);
+            } else {
+                std::cout << "elasped time: " << elasped_time << " us" << std::endl;
             }
-
-
         }
 
-
-
-
-
-//        memcpy(pEcm->pdInputPtr, ec_slave[0].inputs, ec_slave[0].Ibytes);   // Slave -> Master
-//        memcpy( ec_slave[0].outputs, pEcm->pdOutputPtr,ec_slave[0].Obytes); // Master -> Slave
-
-        i++;
-
-        auto time_end = std::chrono::high_resolution_clock::now();
-        int elasped_time = (time_end - time_start).count()/1000;
-
-        if(elasped_time < 1000) {
-            osal_usleep(1000 - elasped_time);
-        }
-        else {
-            std::cout << "elasped time: " << elasped_time << std::endl;
-        }
     }
 
 }
