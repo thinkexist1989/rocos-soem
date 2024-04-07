@@ -25,6 +25,7 @@ Yang Luo, PHD
 #define ROCOS_SOEM_ECAT_PROCESS_H
 
 #include "ethercat.h"
+#include <ecat_config_master.h>
 
 #include <string>
 
@@ -48,6 +49,25 @@ private:
     char IOmap[4096];
     ec_ODlistt ODlist;
     ec_OElistt OElist;
+    boolean printSDO  {FALSE};
+    boolean printMAP  {FALSE};
+    char usdo[128];
+    char hstr[1024];
+
+    int cycle_us {0}; // cycle time in us
+
+    EcatConfigMaster *pEcm  {nullptr};
+
+    volatile bool bRun {true};
+
+    OSAL_THREAD_HANDLE thread;
+
+    int expectedWKC;
+    boolean needlf;
+    volatile int wkc;
+    boolean inOP;
+    uint8 currentgroup = 0;
+    boolean forceByteAlignment = FALSE;
 
 
 };

@@ -151,7 +151,7 @@ TEST_CASE("csp_elmox1") {
     usleep(1000000);
 
     for(int i = 0; i < 5000; i++) {
-        current_pos -= 40;
+        current_pos -= 20;
         ecatConfig->setSlaveOutputVarValueByName<int32_t>(0, "Target position", current_pos);
 
         ecatConfig->waitForSignal();
@@ -159,7 +159,7 @@ TEST_CASE("csp_elmox1") {
     }
 
     for(int i = 0; i < 5000; i++) {
-        current_pos += 40;
+        current_pos += 20;
         ecatConfig->setSlaveOutputVarValueByName<int32_t>(0, "Target position", current_pos);
 
         ecatConfig->waitForSignal();
@@ -168,38 +168,30 @@ TEST_CASE("csp_elmox1") {
 
 }
 
-TEST_CASE("info") {
+TEST_CASE("502-csp") {
     auto ecatConfig = rocos::EcatConfig::getInstance(0);
 
     std::cout << "Slave count: " << ecatConfig->ecatBus->slave_num << std::endl;
 
-    std::cout << "Authorized: " << ecatConfig->isAuthorized() << std::endl;
+    auto current_pos = ecatConfig->getSlaveInputVarValueByName<int32_t>(0, "Position actual value");
+    ecatConfig->setSlaveOutputVarValueByName<int32_t>(0, "Target position", current_pos);
 
-    std::cout << "Min cycle time: " << ecatConfig->getBusMinCycleTime() << std::endl;
-    std::cout << "Max cycle time: " << ecatConfig->getBusMaxCycleTime() << std::endl;
-    std::cout << "Avg cycle time: " << ecatConfig->getBusAvgCycleTime() << std::endl;
-    std::cout << "Curr cycle time: " << ecatConfig->getBusCurrentCycleTime() << std::endl;
+    usleep(200000);
+    ecatConfig->setSlaveOutputVarValueByName<uint16_t>(0, "Controlword", 1);
 
-    std::cout << ecatConfig->ecatBus->slaves[0].input_vars[0].name << std::endl;
+    usleep(1000000);
 
-    for(int i = 0; i < ecatConfig->ecatBus->slave_num; i++) {
-        std::cout << "---------------------------------------------------------------" << std::endl;
-        std::cout << "Slave name: " << ecatConfig->ecatBus->slaves[i].name << std::endl;
-        std::cout << "  -input_count  : " << ecatConfig->ecatBus->slaves[i].input_var_num << std::endl;
-        std::cout << "    -status_word: " << ecatConfig->getSlaveInputVarValueByName<uint16_t>(i, "Status word") << std::endl;
-        std::cout << "    -pos_act_val: " << ecatConfig->getSlaveInputVarValueByName<int32_t>(i, "Position actual value") << std::endl;
-        std::cout << "    -vel_act_val: " << ecatConfig->getSlaveInputVarValueByName<int32_t>(i, "Velocity actual value") << std::endl;
-        std::cout << "    -tor_act_val: " << ecatConfig->getSlaveInputVarValueByName<int16_t>(i, "Torque actual value") << std::endl;
-        std::cout << "  -output_count : " << ecatConfig->ecatBus->slaves[i].output_var_num << std::endl;
-        std::cout << "    -ctrl_word  : " << ecatConfig->getSlaveOutputVarValueByName<uint16_t>(i, "Control word") << std::endl;
-        std::cout << "    -mode_op    : " << (int) ecatConfig->getSlaveOutputVarValueByName<uint8_t>(i,
-                                                                                                    "Mode of operation") << std::endl;
-        std::cout << "    -tar_pos    : " << ecatConfig->getSlaveOutputVarValueByName<int32_t>(i, "Target Position") << std::endl;
-        std::cout << "    -tar_vel    : " << ecatConfig->getSlaveOutputVarValueByName<int32_t>(i, "Target Velocity") << std::endl;
-        std::cout << "    -tar_tor    : " << ecatConfig->getSlaveOutputVarValueByName<int16_t>(i, "Target Torque") << std::endl;
-    }
+    ecatConfig->setSlaveOutputVarValueByName<int32_t>(0, "Target position", current_pos - 50000);
+
+    usleep(2000000);
+
+    ecatConfig->setSlaveOutputVarValueByName<int32_t>(0, "Target position", current_pos);
+
+    usleep(200000);
+    ecatConfig->setSlaveOutputVarValueByName<uint16_t>(0, "Controlword", 0);
 
 }
+
 
 TEST_CASE("reset cycle time") {
     auto ecatConfig = rocos::EcatConfig::getInstance();

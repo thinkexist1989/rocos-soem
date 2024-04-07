@@ -12,7 +12,7 @@ EcatProcess::EcatProcess() {
 }
 
 EcatProcess::~EcatProcess() {
-
+    ec_close(); //析构函数中关闭ecat
 }
 
 void EcatProcess::getSlaveInfo(EcatProcess::string ifname, bool printSDO, bool printMAP) {
@@ -116,7 +116,7 @@ void EcatProcess::getSlaveInfo(EcatProcess::string ifname, bool printSDO, bool p
         /* stop SOEM, close socket */
         ec_close();
     } else {
-        printf("No socket connection on %s\nExcecute as root\n", ifname);
+        printf("No socket connection on %s\nExcecute as root\n", ifname.c_str());
     }
 
 }

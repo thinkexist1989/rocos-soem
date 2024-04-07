@@ -29,10 +29,6 @@
 #include <sys/utsname.h>
 #include <csignal>
 
-#include <mutex>
-
-std::mutex mtx;
-
 int cycle_us = 0;
 
 EcatConfigMaster *pEcm = nullptr;
@@ -691,7 +687,6 @@ void slaveinfo(const char *ifname) {
                 }
             }
 
-
             uint16 map_1c12[2] = {0x0001, 0x1600};
             uint16 map_1c13[2] = {0x0001, 0x1a00};
 
@@ -708,40 +703,10 @@ void slaveinfo(const char *ifname) {
             /* 创建PD Memory */
             pEcm->createPdDataMemoryProvider(ec_slave[0].Ibytes, ec_slave[0].Obytes);
 
-
             ec_readstate();
             pEcm->ecatBus->slave_num = ec_slavecount;
             for (cnt = 1; cnt <= ec_slavecount; cnt++) {
-//                printf("\nSlave:%d\n Name:%s\n Output size: %dbits\n Input size: %dbits\n State: %d\n Delay: %d[ns]\n Has DC: %d\n",
-//                       cnt, ec_slave[cnt].name, ec_slave[cnt].Obits, ec_slave[cnt].Ibits,
-//                       ec_slave[cnt].state, ec_slave[cnt].pdelay, ec_slave[cnt].hasdc);
-//                if (ec_slave[cnt].hasdc) printf(" DCParentport:%d\n", ec_slave[cnt].parentport);
-//                printf(" Activeports:%d.%d.%d.%d\n", (ec_slave[cnt].activeports & 0x01) > 0,
-//                       (ec_slave[cnt].activeports & 0x02) > 0,
-//                       (ec_slave[cnt].activeports & 0x04) > 0,
-//                       (ec_slave[cnt].activeports & 0x08) > 0);
-//                printf(" Configured address: %4.4x\n", ec_slave[cnt].configadr);
-//                printf(" Man: %8.8x ID: %8.8x Rev: %8.8x\n", (int) ec_slave[cnt].eep_man, (int) ec_slave[cnt].eep_id,
-//                       (int) ec_slave[cnt].eep_rev);
-//                for (nSM = 0; nSM < EC_MAXSM; nSM++) {
-//                    if (ec_slave[cnt].SM[nSM].StartAddr > 0)
-//                        printf(" SM%1d A:%4.4x L:%4d F:%8.8x Type:%d\n", nSM, etohs(ec_slave[cnt].SM[nSM].StartAddr),
-//                               etohs(ec_slave[cnt].SM[nSM].SMlength),
-//                               etohl(ec_slave[cnt].SM[nSM].SMflags), ec_slave[cnt].SMtype[nSM]);
-//                }
-//                for (j = 0; j < ec_slave[cnt].FMMUunused; j++) {
-//                    printf(" FMMU%1d Ls:%8.8x Ll:%4d Lsb:%d Leb:%d Ps:%4.4x Psb:%d Ty:%2.2x Act:%2.2x\n", j,
-//                           etohl(ec_slave[cnt].FMMU[j].LogStart), etohs(ec_slave[cnt].FMMU[j].LogLength),
-//                           ec_slave[cnt].FMMU[j].LogStartbit,
-//                           ec_slave[cnt].FMMU[j].LogEndbit, etohs(ec_slave[cnt].FMMU[j].PhysStart),
-//                           ec_slave[cnt].FMMU[j].PhysStartBit,
-//                           ec_slave[cnt].FMMU[j].FMMUtype, ec_slave[cnt].FMMU[j].FMMUactive);
-//                }
-//                printf(" FMMUfunc 0:%d 1:%d 2:%d 3:%d\n",
-//                       ec_slave[cnt].FMMU0func, ec_slave[cnt].FMMU1func, ec_slave[cnt].FMMU2func,
-//                       ec_slave[cnt].FMMU3func);
-//                printf(" MBX length wr: %d rd: %d MBX protocols : %2.2x\n", ec_slave[cnt].mbx_l, ec_slave[cnt].mbx_rl,
-//                       ec_slave[cnt].mbx_proto);
+
                 ssigen = ec_siifind(cnt, ECT_SII_GENERAL);
                 /* SII general section */
                 if (ssigen) {
@@ -757,11 +722,7 @@ void slaveinfo(const char *ifname) {
                     ec_slave[cnt].Ebuscurrent += ec_siigetbyte(cnt, ssigen + 0x0f) << 8;
                     ec_slave[0].Ebuscurrent += ec_slave[cnt].Ebuscurrent;
                 }
-//                printf(" CoE details: %2.2x FoE details: %2.2x EoE details: %2.2x SoE details: %2.2x\n",
-//                       ec_slave[cnt].CoEdetails, ec_slave[cnt].FoEdetails, ec_slave[cnt].EoEdetails,
-//                       ec_slave[cnt].SoEdetails);
-//                printf(" Ebus current: %d[mA]\n only LRD/LWR:%d\n",
-//                       ec_slave[cnt].Ebuscurrent, ec_slave[cnt].blockLRW);
+
                 if ((ec_slave[cnt].mbx_proto & ECT_MBXPROT_COE) && printSDO)
                     si_sdo(cnt);
 
@@ -772,41 +733,10 @@ void slaveinfo(const char *ifname) {
         } else {
             printf("No slaves found!\n");
         }
-//        printf("End slaveinfo, close socket\n");
-        /* stop SOEM, close socket */
-//        ec_close();
     } else {
         printf("No socket connection on %s\nExcecute as root\n", ifname);
     }
 }
-
-char ifbuf[1024];
-
-void test() {
-
-    usleep(200000);
-    target->controlWord = 128;
-
-    usleep(200000);
-    target->controlWord = 0;
-
-
-    usleep(200000);
-    target->controlWord = 6;
-
-
-    usleep(200000);
-    target->controlWord = 7;
-
-
-    usleep(200000);
-    target->controlWord = 15;
-
-
-    usleep(200000);
-
-}
-
 
 OSAL_THREAD_FUNC ecatcheck(void *ptr) {
     int slave;
@@ -905,7 +835,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    printf("CPU亲和性设置成功\n");
+    printf("Cpu affinity set success\n");
 
 
 
@@ -924,7 +854,7 @@ int main(int argc, char *argv[]) {
 //        adapter = adapter->next;
 //    }
 
-    printf("SOEM (Simple Open EtherCAT Master)\nSlaveinfo\n");
+    printf("ROCOS-SOEM (ROCOS - Simple Open EtherCAT Master)\n");
 
 
     /* create thread to handle slave error handling in OP */
@@ -965,18 +895,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-
     std::cout << "ec_state is: " << ec_statecheck(0, EC_STATE_OPERATIONAL, EC_TIMEOUTSTATE) << std::endl;
-
-
-    /* 可以开始工作了 */
-    target = (struct VelocityOut *) (ec_slave[1].outputs);
-    val = (struct VelocityIn *) (ec_slave[1].inputs);
-
-    std::cout << "VelocityOut size: " << sizeof(struct VelocityOut) << std::endl;
-    std::cout << "VelocityIn size: " << sizeof(struct VelocityIn) << std::endl;
-
-//    std::thread(test).detach();
 
     uint16_t expectedWKC = (ec_group[0].outputsWKC * 2) + ec_group[0].inputsWKC;
     printf("Calculated workcounter %d\n", expectedWKC);
@@ -1008,7 +927,6 @@ int main(int argc, char *argv[]) {
 
             if (elasped_time < cycle_us) {
                 osal_usleep(cycle_us - 10 - elasped_time);
-//                osal_usleep(1000);
             } else {
                 std::cout << "elasped time: " << elasped_time << " us" << std::endl;
             }

@@ -509,7 +509,7 @@ void slaveinfo(char *ifname)
 {
    int cnt, i, j, nSM;
     uint16 ssigen;
-    int expectedWKC;*
+    int expectedWKC;
 
    printf("Starting slaveinfo\n");
 
