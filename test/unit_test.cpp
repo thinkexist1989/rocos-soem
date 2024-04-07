@@ -114,6 +114,7 @@ TEST_CASE("csp_slave_info") {
     for(int i = 0; i < ecatConfig->ecatBus->slave_num; i++) {
         std::cout << "---------------------------------------------------------------" << std::endl;
         std::cout << "Slave name: " << ecatConfig->ecatBus->slaves[i].name << std::endl;
+        std::cout << "  -id           : " << ecatConfig->ecatBus->slaves[i].id << std::endl;
         std::cout << "  -input_count  : " << ecatConfig->ecatBus->slaves[i].input_var_num << std::endl;
         std::cout << "    -status_word: " << ecatConfig->getSlaveInputVarValueByName<uint16_t>(i, "Statusword") << std::endl;
         std::cout << "    -pos_act_val: " << ecatConfig->getSlaveInputVarValueByName<int32_t>(i, "Position actual value") << std::endl;
@@ -127,32 +128,34 @@ TEST_CASE("csp_slave_info") {
 }
 
 TEST_CASE("csp_elmox1") {
+    int id = 2;
+
     auto ecatConfig = rocos::EcatConfig::getInstance(0);
 
-    auto current_pos = ecatConfig->getSlaveInputVarValueByName<int32_t>(0, "Position actual value");
-    ecatConfig->setSlaveOutputVarValueByName<int32_t>(0, "Target position", current_pos);
+    auto current_pos = ecatConfig->getSlaveInputVarValueByName<int32_t>(id, "Position actual value");
+    ecatConfig->setSlaveOutputVarValueByName<int32_t>(id, "Target position", current_pos);
 
 
     usleep(200000);
-    ecatConfig->setSlaveOutputVarValueByName<uint16_t>(0, "Controlword", 128);
+    ecatConfig->setSlaveOutputVarValueByName<uint16_t>(id, "Controlword", 128);
 
     usleep(200000);
-    ecatConfig->setSlaveOutputVarValueByName<uint16_t>(0, "Controlword", 0);
+    ecatConfig->setSlaveOutputVarValueByName<uint16_t>(id, "Controlword", 0);
 
     usleep(200000);
-    ecatConfig->setSlaveOutputVarValueByName<uint16_t>(0, "Controlword", 6);
+    ecatConfig->setSlaveOutputVarValueByName<uint16_t>(id, "Controlword", 6);
 
     usleep(200000);
-    ecatConfig->setSlaveOutputVarValueByName<uint16_t>(0, "Controlword", 7);
+    ecatConfig->setSlaveOutputVarValueByName<uint16_t>(id, "Controlword", 7);
 
     usleep(200000);
-    ecatConfig->setSlaveOutputVarValueByName<uint16_t>(0, "Controlword", 15);
+    ecatConfig->setSlaveOutputVarValueByName<uint16_t>(id, "Controlword", 15);
 
     usleep(1000000);
 
     for(int i = 0; i < 5000; i++) {
         current_pos -= 20;
-        ecatConfig->setSlaveOutputVarValueByName<int32_t>(0, "Target position", current_pos);
+        ecatConfig->setSlaveOutputVarValueByName<int32_t>(id, "Target position", current_pos);
 
         ecatConfig->waitForSignal();
 
@@ -160,7 +163,7 @@ TEST_CASE("csp_elmox1") {
 
     for(int i = 0; i < 5000; i++) {
         current_pos += 20;
-        ecatConfig->setSlaveOutputVarValueByName<int32_t>(0, "Target position", current_pos);
+        ecatConfig->setSlaveOutputVarValueByName<int32_t>(id, "Target position", current_pos);
 
         ecatConfig->waitForSignal();
 

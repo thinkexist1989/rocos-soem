@@ -407,7 +407,7 @@ int si_PDOassign(uint16 slave, uint16 PDOassign, int mapoffset, int bitoffset) {
                         memcpy(pdVar[*pNum].name, OElist.Name[obj_subidx],
                                strlen(OElist.Name[obj_subidx])); /// Input Var Name
 
-                        pdVar[*pNum].offset = bitoffset / 8;
+                        pdVar[*pNum].offset = abs_offset;
                         pdVar[*pNum].size = bitlen / 8;
 
 
@@ -415,6 +415,7 @@ int si_PDOassign(uint16 slave, uint16 PDOassign, int mapoffset, int bitoffset) {
 
                     } else
                         printf("\n");
+
                     bitoffset += bitlen;
                 };
             };
@@ -433,6 +434,8 @@ int si_PDOassign(uint16 slave, uint16 PDOassign, int mapoffset, int bitoffset) {
 
 int si_map_sdo(int slave) {
     rocos::Slave *pSlave = &pEcm->ecatBus->slaves[slave - 1]; //TODO: slaveId is 1-based
+
+    printf("=================================\n");
 
     memcpy(pSlave->name, ec_slave[slave].name, sizeof(ec_slave[slave].name)); /// Slave Name
     printf("Slave Name..........: %s\n", pSlave->name);
@@ -479,12 +482,22 @@ int si_map_sdo(int slave) {
                 if (tSM)
                     tSM += SMt_bug_add; // only add if SMt > 0
 
+
+                int slaveInOffset = 0;
+                int slaveOutOffset = 0;
+
+                for(int i = 1; i < slave; i++) {
+                    slaveInOffset += ec_slave[i].Ibytes;
+                    slaveOutOffset += ec_slave[i].Obytes;
+                }
+
+
                 if (tSM == 3) // outputs
                 {
                     /* read the assign RXPDO */
 //                    printf("  SM%1d outputs\n     addr b   index: sub bitl data_type    name\n", iSM);
                     Tsize = si_PDOassign(slave, ECT_SDO_PDOASSIGN + iSM,
-                                         (int) (ec_slave[slave].outputs - (uint8 *) &IOmap[0]), outputs_bo);
+                                         slaveOutOffset, outputs_bo);
                     outputs_bo += Tsize;
                 }
                 if (tSM == 4) // inputs
@@ -492,9 +505,10 @@ int si_map_sdo(int slave) {
                     /* read the assign TXPDO */
 //                    printf("  SM%1d inputs\n     addr b   index: sub bitl data_type    name\n", iSM);
                     Tsize = si_PDOassign(slave, ECT_SDO_PDOASSIGN + iSM,
-                                         (int) (ec_slave[slave].inputs - (uint8 *) &IOmap[0]), inputs_bo);
+                                         slaveInOffset, inputs_bo);
                     inputs_bo += Tsize;
                 }
+
             }
         }
     }
@@ -602,26 +616,6 @@ int si_siiPDO(uint16 slave, uint8 t, int mapoffset, int bitoffset) {
     }
     if (eectl) ec_eeprom2pdi(slave); /* if eeprom control was previously pdi then restore */
     return totalsize;
-}
-
-int si_map_sii(int slave) {
-    int retVal = 0;
-    int Tsize, outputs_bo, inputs_bo;
-
-    printf("PDO mapping according to SII :\n");
-
-    outputs_bo = 0;
-    inputs_bo = 0;
-    /* read the assign RXPDOs */
-    Tsize = si_siiPDO(slave, 1, (int) (ec_slave[slave].outputs - (uint8 *) &IOmap), outputs_bo);
-    outputs_bo += Tsize;
-    /* read the assign TXPDOs */
-    Tsize = si_siiPDO(slave, 0, (int) (ec_slave[slave].inputs - (uint8 *) &IOmap), inputs_bo);
-    inputs_bo += Tsize;
-    /* found some I/O bits ? */
-    if ((outputs_bo > 0) || (inputs_bo > 0))
-        retVal = 1;
-    return retVal;
 }
 
 void si_sdo(int cnt) {
@@ -865,10 +859,12 @@ int main(int argc, char *argv[]) {
     cycle_us = FLAGS_cycle;
 
     int8_t mode = 8;
-    ec_SDOwrite(1, 0x6060, 0, TRUE, sizeof(mode), &mode, EC_TIMEOUTSAFE);
-
     uint8_t period = 2;
-    ec_SDOwrite(1, 0x60c2, 1, TRUE, sizeof(period), &period, EC_TIMEOUTSAFE);
+    for(int i = 1; i < ec_slavecount; i++) {
+        ec_SDOwrite(i, 0x6060, 0, TRUE, sizeof(mode), &mode, EC_TIMEOUTSAFE);
+        ec_SDOwrite(i, 0x60c2, 1, TRUE, sizeof(period), &period, EC_TIMEOUTSAFE);
+    }
+
 
 
     /** going operational */
@@ -900,7 +896,6 @@ int main(int argc, char *argv[]) {
     uint16_t expectedWKC = (ec_group[0].outputsWKC * 2) + ec_group[0].inputsWKC;
     printf("Calculated workcounter %d\n", expectedWKC);
 
-//    target->targetVelocity = 100000;
 
     while (1) {
         /** PDO I/O refresh */
