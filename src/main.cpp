@@ -33,6 +33,8 @@
 
 std::mutex mtx;
 
+int cycle_us = 0;
+
 EcatConfigMaster *pEcm = nullptr;
 volatile bool bRun = true;
 
@@ -669,7 +671,7 @@ void slaveinfo(const char *ifname) {
 
         /* find and auto-config slaves */
         if (ec_config(FALSE, &IOmap) > 0) {
-//            ec_configdc();
+            ec_configdc();
             while (EcatError) printf("%s", ec_elist2string());
             printf("%d slaves found and configured.\n", ec_slavecount);
 
@@ -930,9 +932,13 @@ int main(int argc, char *argv[]) {
 
     slaveinfo(FLAGS_instance.c_str());
 
+    cycle_us = FLAGS_cycle;
 
     int8_t mode = 8;
     ec_SDOwrite(1, 0x6060, 0, TRUE, sizeof(mode), &mode, EC_TIMEOUTSAFE);
+
+    uint8_t period = 2;
+    ec_SDOwrite(1, 0x60c2, 1, TRUE, sizeof(period), &period, EC_TIMEOUTSAFE);
 
 
     /** going operational */
@@ -1000,8 +1006,9 @@ int main(int argc, char *argv[]) {
 
 
 
-            if (elasped_time < 1000) {
-                osal_usleep(1000 - elasped_time);
+            if (elasped_time < cycle_us) {
+                osal_usleep(cycle_us - 10 - elasped_time);
+//                osal_usleep(1000);
             } else {
                 std::cout << "elasped time: " << elasped_time << " us" << std::endl;
             }
