@@ -128,7 +128,7 @@ TEST_CASE("csp_slave_info") {
 }
 
 TEST_CASE("csp_elmox1") {
-    int id = 2;
+    int id = 1;
 
     auto ecatConfig = rocos::EcatConfig::getInstance(0);
 
@@ -153,16 +153,16 @@ TEST_CASE("csp_elmox1") {
 
     usleep(1000000);
 
-    for(int i = 0; i < 5000; i++) {
-        current_pos -= 20;
+    for(int i = 0; i < 2000; i++) {
+        current_pos -= 40;
         ecatConfig->setSlaveOutputVarValueByName<int32_t>(id, "Target position", current_pos);
 
         ecatConfig->waitForSignal();
 
     }
 
-    for(int i = 0; i < 5000; i++) {
-        current_pos += 20;
+    for(int i = 0; i < 2000; i++) {
+        current_pos += 40;
         ecatConfig->setSlaveOutputVarValueByName<int32_t>(id, "Target position", current_pos);
 
         ecatConfig->waitForSignal();

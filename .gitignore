@@ -12,3 +12,5 @@ _deps
 
 .idea/
 cmake-build-*/
+.vscode/settings.json
+build/

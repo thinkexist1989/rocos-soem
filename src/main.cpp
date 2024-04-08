@@ -860,7 +860,7 @@ int main(int argc, char *argv[]) {
 
     int8_t mode = 8;
     uint8_t period = 2;
-    for(int i = 1; i < ec_slavecount; i++) {
+    for(int i = 1; i <= ec_slavecount; i++) {
         ec_SDOwrite(i, 0x6060, 0, TRUE, sizeof(mode), &mode, EC_TIMEOUTSAFE);
         ec_SDOwrite(i, 0x60c2, 1, TRUE, sizeof(period), &period, EC_TIMEOUTSAFE);
     }
@@ -921,7 +921,7 @@ int main(int argc, char *argv[]) {
 
 
             if (elasped_time < cycle_us) {
-                osal_usleep(cycle_us - 10 - elasped_time);
+                usleep(cycle_us - 10 - elasped_time);
             } else {
                 std::cout << "elasped time: " << elasped_time << " us" << std::endl;
             }
