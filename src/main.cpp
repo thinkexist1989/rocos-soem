@@ -920,7 +920,7 @@ int main(int argc, char *argv[]) {
 
 
 
-            if (elasped_time < cycle_us) {
+            if (elasped_time < (cycle_us - 10)) {
                 usleep(cycle_us - 10 - elasped_time);
             } else {
                 std::cout << "elasped time: " << elasped_time << " us" << std::endl;
